@@ -11,6 +11,7 @@
     "node-roon-api": "github:roonlabs/node-roon-api#caca92e99fd6becfc97761d32333cf4cd914b438",
     "node-roon-api-settings": "github:roonlabs/node-roon-api-settings#67cd8ca156c5bcd01ea63833ceaaec6d6a79654d",
     "node-roon-api-status": "github:roonlabs/node-roon-api-status#504c918d6da267e03fbb4337befa71ca3d3c7526",
-    "node-roon-api-volume-control": "github:roonlabs/node-roon-api-volume-control#e3e012b2376b87a5af82c10cc5cc9f4a53e2907a"
+    "node-roon-api-volume-control": "github:roonlabs/node-roon-api-volume-control#e3e012b2376b87a5af82c10cc5cc9f4a53e2907a",
+    "node-roon-api-source-control": "github:roonlabs/node-roon-api-source-control"
   }
 }
