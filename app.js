@@ -118,9 +118,17 @@ function setup_denon_connection(host) {
             svc_status.set_status("Connection closed by receiver. Reconnecting...", true);
 
             setTimeout(() => {
-                denon.client.connect().catch((error) => {
+                denon.client.connect().then(() => {
+                    create_volume_control(denon).then(() => {
+                        create_source_control(denon).then(() =>{
+                            svc_status.set_status("Connected to receiver", false);
+                        });
+                    });
+                }).catch((error) => {
                     debug("setup_denon_connection: Error during setup. Retrying...");
-                    debug(error);
+
+                    // TODO: Fix error message
+                    console.log(error);
                     svc_status.set_status("Could not connect receiver: " + error, true);
                 });
 
@@ -183,15 +191,14 @@ function setup_denon_connection(host) {
             }
         });
 
-        denon.client.on('connect', () => {
+
+        denon.client.connect().then(() => {
             create_volume_control(denon).then(() => {
                 create_source_control(denon).then(() =>{
                     svc_status.set_status("Connected to receiver", false);
                 });
             });
-        });
-
-        denon.client.connect().catch((error) => {
+        }).catch((error) => {
             debug("setup_denon_connection: Error during setup. Retrying...");
 
             // TODO: Fix error message
