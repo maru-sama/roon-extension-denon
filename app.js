@@ -42,9 +42,9 @@ function make_layout(settings) {
         type:    "dropdown",
         title:   "Input",
         values:  [
-            { value: "VCR", title: "VCR"           },
-            { value: "DVD", title: "DVD"         },
-            { value: "BD", title: ""             },
+            { value: "VCR", title: "VCR" },
+            { value: "DVD", title: "DVD" },
+            { value: "BD",  title: "BD"  },
             { value: "SAT", title: "SAT" }
         ],
         setting: "setsource",
