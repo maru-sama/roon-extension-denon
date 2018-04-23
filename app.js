@@ -38,18 +38,19 @@ function make_layout(settings) {
         maxlength: 256,
         setting:   "hostname",
     });
-    l.layout.push({
-        type:    "dropdown",
-        title:   "Input",
-        values:  [
-            { value: "VCR", title: "VCR" },
-            { value: "DVD", title: "DVD" },
-            { value: "BD",  title: "BD"  },
-            { value: "SAT", title: "SAT" }
-        ],
-        setting: "setsource",
-    });
-
+    if(settings.hostname) {
+        l.layout.push({
+            type:    "dropdown",
+            title:   "Input",
+            values:  [
+                { value: "VCR", title: "VCR" },
+                { value: "DVD", title: "DVD" },
+                { value: "BD",  title: "BD"  },
+                { value: "SAT", title: "SAT" }
+            ],
+            setting: "setsource",
+        });
+    }
     return l;
 }
 
@@ -115,24 +116,27 @@ function setup_denon_connection(host) {
             if (denon.volume_control) { denon.volume_control.destroy(); delete(denon.volume_control); }
             if (denon.source_control) { denon.source_control.destroy(); delete(denon.source_control); }
 
+            if(denon.client) {
             svc_status.set_status("Connection closed by receiver. Reconnecting...", true);
-
-            setTimeout(() => {
-                denon.client.connect().then(() => {
-                    create_volume_control(denon).then(() => {
-                        create_source_control(denon).then(() =>{
-                            svc_status.set_status("Connected to receiver", false);
+                setTimeout(() => {
+                    denon.client.connect().then(() => {
+                        create_volume_control(denon).then(() => {
+                            create_source_control(denon).then(() =>{
+                                svc_status.set_status("Connected to receiver", false);
+                            });
                         });
+                    }).catch((error) => {
+                        debug("setup_denon_connection: Error during setup. Retrying...");
+
+                        // TODO: Fix error message
+                        console.log(error);
+                        svc_status.set_status("Could not connect receiver: " + error, true);
                     });
-                }).catch((error) => {
-                    debug("setup_denon_connection: Error during setup. Retrying...");
 
-                    // TODO: Fix error message
-                    console.log(error);
-                    svc_status.set_status("Could not connect receiver: " + error, true);
-                });
-
-            }, 1000);
+                }, 1000);
+            } else {
+                svc_status.set_status("Not configured, please check settings.", true);
+            }
         });
 
         denon.client.on('powerChanged', (val) => {
