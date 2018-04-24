@@ -7,7 +7,9 @@ var debug                = require('debug')('roon-extension-denon'),
     RoonApiSettings      = require('node-roon-api-settings'),
     RoonApiStatus        = require('node-roon-api-status'),
     RoonApiVolumeControl = require('node-roon-api-volume-control'),
-    RoonApiSourceControl = require('node-roon-api-source-control');
+    RoonApiSourceControl = require('node-roon-api-source-control'),
+    fetch = require('node-fetch'),
+    parse = require('fast-xml-parser');
 
 var denon = {};
 var roon = new RoonApi({
@@ -38,40 +40,88 @@ function make_layout(settings) {
         maxlength: 256,
         setting:   "hostname",
     });
-    if(settings.hostname) {
+    if(settings.err) {
         l.layout.push({
-            type:    "dropdown",
-            title:   "Input",
-            values:  [
-                { value: "VCR", title: "VCR" },
-                { value: "DVD", title: "DVD" },
-                { value: "BD",  title: "BD"  },
-                { value: "SAT", title: "SAT" }
-            ],
-            setting: "setsource",
+            type:    "status",
+            title:   settings.err,
         });
+    }
+    else {
+        if(settings.hostname) {
+            l.layout.push({
+                type:    "dropdown",
+                title:   "Input",
+                values:  denon.inputs,
+                setting: "setsource",
+            });
+        }
     }
     return l;
 }
 
 var svc_settings = new RoonApiSettings(roon, {
     get_settings: function(cb) {
-        cb(make_layout(mysettings));
+        delete mysettings.err;
+        (mysettings.hostname && !denon.input ?
+            queryInputs(mysettings.hostname)
+            .then(inputs => {
+                denon.inputs = inputs
+            }) : Promise.resolve())
+            .then(() => {
+                cb(make_layout(mysettings));
+            })
+            .catch(err => {
+                mysettings.err = err.message;
+                cb(make_layout(mysettings));
+            });
     },
     save_settings: function(req, isdryrun, settings) {
+        if (isdryrun) {
+            queryInputs(settings.values.hostname)
+                .then(inputs => {
+                    denon.inputs = inputs;
+                    delete settings.values.err;
+                    let l = make_layout(settings.values);
+                    req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
+                })
+                .catch(err => {
+                    settings.values.err = err.message;
+                    let l = make_layout(settings.values);
+                    req.send_complete("NotValid", { settings: l });
+                });
+            return;
+        }
+
         let l = make_layout(settings.values);
         req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
+        var old_hostname = mysettings.hostname;
+        mysettings = l.values;
+        svc_settings.update_settings(l);
+        if (old_hostname != mysettings.hostname) setup_denon_connection(mysettings.hostname);
+        roon.save_config("settings", mysettings);
 
-        if (!isdryrun && !l.has_error) {
-            var old_hostname = mysettings.hostname;
-            mysettings = l.values;
-            svc_settings.update_settings(l);
-            if (old_hostname != mysettings.hostname) setup_denon_connection(mysettings.hostname);
-            roon.save_config("settings", mysettings);
-        }
     }
 });
 
+function queryInputs(hostname) {
+
+    return fetch('http://' + hostname + '/goform/formMainZone_MainZoneXmlStatus.xml',{timeout: 5000})
+        .then(res => res.text())
+        .then(body => {
+
+            var result = parse.parse(body);
+            var inputs = result['item']['InputFuncList']['value'];
+            var renames= result['item']['RenameSource']['value'];
+            var outs = inputs.map((x, i) => {
+                var dict = {};
+                dict["title"] = renames[i];
+                dict["value"] = x;
+                return dict;
+
+            }).filter(data => data.title != "");
+            return outs;
+        });
+}
 var svc_status = new RoonApiStatus(roon);
 var svc_volume_control = new RoonApiVolumeControl(roon);
 var svc_source_control = new RoonApiSourceControl(roon);
