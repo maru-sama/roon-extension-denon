@@ -41,12 +41,14 @@ function make_layout(settings) {
         setting:   "hostname",
     });
     if(settings.err) {
+        l.has_error = true;
         l.layout.push({
             type:    "status",
             title:   settings.err,
         });
     }
     else {
+        l.has_error = false;
         if(settings.hostname) {
             l.layout.push({
                 type:    "dropdown",
@@ -93,19 +95,22 @@ var svc_settings = new RoonApiSettings(roon, {
         }
 
         let l = make_layout(settings.values);
-        req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
+        req.send_complete(settings.values.err ? "NotValid" : "Success", { settings: l });
+
+      if(!settings.values.err) {
         var old_hostname = mysettings.hostname;
         mysettings = l.values;
         svc_settings.update_settings(l);
         if (old_hostname != mysettings.hostname) setup_denon_connection(mysettings.hostname);
         roon.save_config("settings", mysettings);
+      }
 
     }
 });
 
 function queryInputs(hostname) {
 
-    return fetch('http://' + hostname + '/goform/formMainZone_MainZoneXmlStatus.xml',{timeout: 5000})
+    return fetch('http://' + hostname + '/goform/formMainZone_MainZoneXmlStatus.xml',{timeout: 2000})
         .then(res => res.text())
         .then(body => {
 
@@ -133,8 +138,10 @@ roon.init_services({
 function setup_denon_connection(host) {
     debug("setup_denon_connection (" + host + ")");
 
+    if (denon.volume_control) { denon.volume_control.destroy(); delete(denon.volume_control); }
+    if (denon.source_control) { denon.source_control.destroy(); delete(denon.source_control); }
     if (denon.keepalive) { clearInterval(denon.keepalive); denon.keepalive = null; }
-    if (denon.client) { denon.client.disconnect(); delete(denon.client); }
+    if (denon.client) { denon.client.removeAllListeners('close'); denon.client.disconnect(); delete(denon.client); }
 
     if (!host) {
         svc_status.set_status("Not configured, please check settings.", true);
