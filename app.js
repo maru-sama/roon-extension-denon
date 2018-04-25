@@ -97,13 +97,13 @@ var svc_settings = new RoonApiSettings(roon, {
         let l = make_layout(settings.values);
         req.send_complete(settings.values.err ? "NotValid" : "Success", { settings: l });
 
-      if(!settings.values.err) {
-        var old_hostname = mysettings.hostname;
-        mysettings = l.values;
-        svc_settings.update_settings(l);
-        if (old_hostname != mysettings.hostname) setup_denon_connection(mysettings.hostname);
-        roon.save_config("settings", mysettings);
-      }
+        if(!l.has_error) {
+            var old_hostname = mysettings.hostname;
+            mysettings = l.values;
+            svc_settings.update_settings(l);
+            if (old_hostname != mysettings.hostname) setup_denon_connection(mysettings.hostname);
+            roon.save_config("settings", mysettings);
+        }
 
     }
 });
