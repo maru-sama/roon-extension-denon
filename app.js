@@ -110,20 +110,22 @@ var svc_settings = new RoonApiSettings(roon, {
 
 function queryInputs(hostname) {
 
-    return fetch('http://' + hostname + '/goform/formMainZone_MainZoneXmlStatus.xml',{timeout: 2000})
+    return fetch('http://' + hostname + '/goform/formMainZone_MainZoneXml.xml',{timeout: 2000})
         .then(res => res.text())
         .then(body => {
 
             var result = parse.parse(body);
             var inputs = result['item']['InputFuncList']['value'];
-            var renames= result['item']['RenameSource']['value'];
+            var renames = result['item']['RenameSource']['value'];
+            var removes = result['item']['SourceDelete']['value'];
+          
             var outs = inputs.map((x, i) => {
                 var dict = {};
                 dict["title"] = renames[i];
                 dict["value"] = x;
                 return dict;
 
-            }).filter(data => data.title != "");
+            }).filter((data, index) => removes[index] == "USE" && data.value != "TV");
             return outs;
         });
 }
