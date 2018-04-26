@@ -64,47 +64,40 @@ function make_layout(settings) {
 var svc_settings = new RoonApiSettings(roon, {
     get_settings: function(cb) {
         delete mysettings.err;
-        (mysettings.hostname && !denon.input ?
+        (mysettings.hostname ?
             queryInputs(mysettings.hostname)
             .then(inputs => {
                 denon.inputs = inputs
             }) : Promise.resolve())
-            .then(() => {
-                cb(make_layout(mysettings));
-            })
             .catch(err => {
                 mysettings.err = err.message;
+            })
+            .then(() => {
                 cb(make_layout(mysettings));
             });
     },
     save_settings: function(req, isdryrun, settings) {
-        if (isdryrun) {
+        (settings.values.hostname ?
             queryInputs(settings.values.hostname)
-                .then(inputs => {
-                    denon.inputs = inputs;
-                    delete settings.values.err;
-                    let l = make_layout(settings.values);
-                    req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
-                })
-                .catch(err => {
-                    settings.values.err = err.message;
-                    let l = make_layout(settings.values);
-                    req.send_complete("NotValid", { settings: l });
-                });
-            return;
-        }
+            .then(inputs => {
+                denon.inputs = inputs;
+                delete settings.values.err;
+            }) : Promise.resolve())
+            .catch(err => {
+                settings.values.err = err.message;
+            })
+            .then(() => {
+                let l = make_layout(settings.values);
+                req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
 
-        let l = make_layout(settings.values);
-        req.send_complete(settings.values.err ? "NotValid" : "Success", { settings: l });
-
-        if(!l.has_error) {
-            var old_hostname = mysettings.hostname;
-            mysettings = l.values;
-            svc_settings.update_settings(l);
-            if (old_hostname != mysettings.hostname) setup_denon_connection(mysettings.hostname);
-            roon.save_config("settings", mysettings);
-        }
-
+                if(!l.has_error && !isdryrun) {
+                    var old_hostname = mysettings.hostname;
+                    mysettings = l.values;
+                    svc_settings.update_settings(l);
+                    if (old_hostname != mysettings.hostname) setup_denon_connection(mysettings.hostname);
+                    roon.save_config("settings", mysettings);
+                }
+            });
     }
 });
 
