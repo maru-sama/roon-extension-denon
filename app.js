@@ -53,7 +53,7 @@ function make_layout(settings) {
             l.layout.push({
                 type:    "dropdown",
                 title:   "Input",
-                values:  denon.inputs,
+                values:  settings.inputs,
                 setting: "setsource",
             });
         }
@@ -61,34 +61,37 @@ function make_layout(settings) {
     return l;
 }
 
+function probeInputs(settings) {
+
+    let inputs = (settings.hostname ?
+        queryInputs(settings.hostname)
+        .then(inputs => {
+            delete settings.err;
+            settings.inputs = inputs
+        }) : Promise.resolve())
+
+        .catch(err => {
+            settings.err = err.message;
+        })
+        .then(() => {
+            return settings;
+        });
+    return inputs;
+}
+
 var svc_settings = new RoonApiSettings(roon, {
     get_settings: function(cb) {
-        delete mysettings.err;
-        (mysettings.hostname ?
-            queryInputs(mysettings.hostname)
-            .then(inputs => {
-                denon.inputs = inputs
-            }) : Promise.resolve())
-            .catch(err => {
-                mysettings.err = err.message;
-            })
-            .then(() => {
-                cb(make_layout(mysettings));
+        probeInputs(mysettings)    
+            .then((settings) => {
+                cb(make_layout(settings));
             });
     },
     save_settings: function(req, isdryrun, settings) {
-        (settings.values.hostname ?
-            queryInputs(settings.values.hostname)
-            .then(inputs => {
-                denon.inputs = inputs;
-                delete settings.values.err;
-            }) : Promise.resolve())
-            .catch(err => {
-                settings.values.err = err.message;
-            })
-            .then(() => {
-                let l = make_layout(settings.values);
+        probeInputs(settings.values)
+            .then((settings) => {
+                let l = make_layout(settings);
                 req.send_complete(l.has_error ? "NotValid" : "Success", { settings: l });
+                delete settings.inputs;
 
                 if(!l.has_error && !isdryrun) {
                     var old_hostname = mysettings.hostname;
@@ -171,20 +174,7 @@ function setup_denon_connection(host) {
             if(denon.client) {
             svc_status.set_status("Connection closed by receiver. Reconnecting...", true);
                 setTimeout(() => {
-                    denon.client.connect().then(() => {
-                        create_volume_control(denon).then(() => {
-                            create_source_control(denon).then(() =>{
-                                svc_status.set_status("Connected to receiver", false);
-                            });
-                        });
-                    }).catch((error) => {
-                        debug("setup_denon_connection: Error during setup. Retrying...");
-
-                        // TODO: Fix error message
-                        console.log(error);
-                        svc_status.set_status("Could not connect receiver: " + error, true);
-                    });
-
+                    connect();
                 }, 1000);
             } else {
                 svc_status.set_status("Not configured, please check settings.", true);
@@ -247,6 +237,18 @@ function setup_denon_connection(host) {
             }
         });
 
+        denon.keepalive = setInterval(() => {
+            // Make regular calls to getBrightness for keep-alive.
+            denon.client.getBrightness().then((val) => {
+                debug_keepalive("Keep-Alive: getInput == %s", val);
+            });
+        }, 60000);
+
+        connect();
+    }
+}
+
+function connect() {
 
         denon.client.connect().then(() => {
             create_volume_control(denon).then(() => {
@@ -261,14 +263,6 @@ function setup_denon_connection(host) {
             console.log(error);
             svc_status.set_status("Could not connect receiver: " + error, true);
         });
-
-        denon.keepalive = setInterval(() => {
-            // Make regular calls to getBrightness for keep-alive.
-            denon.client.getBrightness().then((val) => {
-                debug_keepalive("Keep-Alive: getInput == %s", val);
-            });
-        }, 60000);
-    }
 }
 
 function check_status(power, input) {
@@ -345,7 +339,6 @@ function create_volume_control(denon) {
         denon.volume_state.is_muted = (val === Denon.Options.MuteOptions.On);
         denon.volume_control = svc_volume_control.new_device(device);
     });
-
     return result;
 }
 
@@ -388,10 +381,6 @@ function create_source_control(denon) {
                     req.send_complete("Failed");
                 });
             });
-
-
-
-
         }
     };
     let result = denon.client.getPower().then((val) => {
