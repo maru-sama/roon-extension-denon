@@ -22,6 +22,14 @@ var mysettings = roon.load_config("settings") || {
     hostname: "",
 };
 
+var dummy_client = new Proxy(new Object(), {
+    get(target,name) {
+        return function() {
+            return Promise.resolve();
+        }
+    }
+});
+
 function make_layout(settings) {
     var l = {
         values:    settings,
@@ -72,6 +80,7 @@ function setup_denon_connection(host) {
     if (denon.client) { denon.client.disconnect(); delete(denon.client); }
 
     if (!host) {
+        denon.client = dummy_client;
         svc_status.set_status("Not configured, please check settings.", true);
     } else {
         debug("Connecting to receiver...");
