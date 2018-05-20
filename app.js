@@ -22,8 +22,35 @@ var roon = new RoonApi({
 });
 
 var mysettings = roon.load_config("settings") || {
-    hostname:  "",
-    setsource: "",
+    hostname:    "",
+    setsource:   "",
+    volume_type: "relative",
+};
+
+if (!mysettings.volume_type) {mysettings.volume_type = "relative"};
+
+denon.volume_state = {
+    display_name: "Main Zone",
+    volume_step:  0.5,
+    get volume_type() {
+        return mysettings.volume_type == "relative" ? "db" : "number";
+    },
+    get volume_min() {
+
+        return mysettings.volume_type == "relative" ? -79.5 : 0.5;
+    },
+    get volume_value() {
+        return mysettings.volume_type == "relative" ? this.v_val - 80 : this.v_val;
+    },
+    set volume_value(val) {
+        this.v_val = val;
+    },
+    get volume_max() {
+        return mysettings.volume_type == "relative" ? this.v_max - 80 : this.v_max;
+    },
+    set volume_max(val) {
+        this.v_max = val;
+    }
 };
 
 var dummy_client = new Proxy(new Object(), {
@@ -47,6 +74,15 @@ function make_layout(settings) {
         subtitle:  "The IP address or hostname of the Denon/Marantz receiver.",
         maxlength: 256,
         setting:   "hostname",
+    });
+    l.layout.push({
+        type:    "dropdown",
+        title:   "Volume Type",
+        subtitle: "Select if you want to have a relative (dB) or absolute (volume) display",
+        values:  [
+            {title: "absolute", value: "absolute"},
+            {title: "relative", value: "relative"}],
+        setting: "volume_type",
     });
     if(settings.err) {
         l.has_error = true;
@@ -86,8 +122,12 @@ var svc_settings = new RoonApiSettings(roon, {
 
                 if(!l.has_error && !isdryrun) {
                     var old_hostname = mysettings.hostname;
+                    var old_volume_type = mysettings.volume_type;
                     mysettings = l.values;
                     svc_settings.update_settings(l);
+                    if (old_volume_type != mysettings.volume_type && denon.volume_control) {
+                        denon.volume_control.update_state(denon.volume_state);
+                    }
                     if (old_hostname != mysettings.hostname) setup_denon_connection(mysettings.hostname);
                     roon.save_config("settings", mysettings);
                 }
@@ -236,18 +276,18 @@ function setup_denon_connection(host) {
         });
 
         denon.client.on('masterVolumeChanged', (val) => {
-            debug("masterVolumeChanged: val=%s", val - 80);
+            debug("masterVolumeChanged: val=%s", val);
 
-            denon.volume_state.volume_value = val - 80;
+            denon.volume_state.volume_value = val;
             if (denon.volume_control) {
                 denon.volume_control.update_state({ volume_value: denon.volume_state.volume_value });
             }
         });
 
         denon.client.on('masterVolumeMaxChanged', (val) => {
-            debug("masterVolumeMaxChanged: val=%s", val - 80);
+            debug("masterVolumeMaxChanged: val=%s", val);
 
-            denon.volume_state.volume_max = val - 80;
+            denon.volume_state.volume_max = val;
             if (denon.volume_control) {
                 denon.volume_control.update_state({ volume_max: denon.volume_state.volume_max });
             }
@@ -301,12 +341,6 @@ function check_status(power, input) {
 function create_volume_control(denon) {
     debug("create_volume_control: volume_control=%o", denon.volume_control)
     if(!denon.volume_control) {
-        denon.volume_state = {
-            display_name: "Main Zone",
-            volume_type:  "db",
-            volume_min:   -79.5,
-            volume_step:  0.5,
-        };
 
         var device = {
             state: denon.volume_state,
@@ -317,7 +351,11 @@ function create_volume_control(denon) {
                 if      (newvol < this.state.volume_min) newvol = this.state.volume_min;
                 else if (newvol > this.state.volume_max) newvol = this.state.volume_max;
 
-                denon.client.setVolume(newvol + 80).then(() => {
+                if (mysettings.volume_type == "relative") {
+                    newvol += 80;
+                }
+
+                denon.client.setVolume(newvol).then(() => {
                     debug("set_volume: Succeeded.");
                     req.send_complete("Success");
                 }).catch((error) => {
@@ -346,10 +384,10 @@ function create_volume_control(denon) {
         };
     }
     let result = denon.client.getVolume().then((val) => {
-        denon.volume_state.volume_value = val - 80;
+        denon.volume_state.volume_value = val;
         return denon.client.getMaxVolume();
     }).then((val) => {
-        denon.volume_state.volume_max = val - 80;
+        denon.volume_state.volume_max = val;
         return denon.client.getMute();
     }).then((val) => {
         denon.volume_state.is_muted = (val === Denon.Options.MuteOptions.On);
